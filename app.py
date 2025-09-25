@@ -1,5 +1,6 @@
 from flask import Flask, request, render_template
 from scanner.portscan import scan_host
+from scanner.discover import ping_sweep
 import webbrowser
 import threading
 
@@ -9,6 +10,12 @@ app = Flask(__name__)
 cve_db = [
     {"banner": "vulnerable_device", "cve": "CVE-1234-5678"}
 ]
+
+@app.route("/discover", methods=["GET"])
+def discover():
+    live_hosts = ping_sweep("192.168.1.0/24")  # set your subnet
+    devices = [{"ip": ip} for ip in live_hosts]
+    return render_template("discover.html", devices=devices)
 
 @app.route("/", methods=["GET", "POST"])
 def index():
