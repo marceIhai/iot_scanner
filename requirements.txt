@@ -1,0 +1,5 @@
+Flask
+scapy
+requests
+paramiko
+netaddr

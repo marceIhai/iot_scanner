@@ -1,0 +1,7 @@
+{
+  "meta": {"target":"192.168.1.10", "scan_time":"..."},
+  "discovery": {"ip":"192.168.1.10","mac":"..."},
+  "ports":[ {"port":80,"open":true,"banner":"...","cves":[...]} ],
+  "credentials":[...],
+  "fingerprint": {"ttl":64, "oui_vendor":"Hikvision"}
+}

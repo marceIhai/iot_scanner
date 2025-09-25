@@ -1,0 +1,1 @@
+# This file can be empty. It just makes 'scanner' a Python package.

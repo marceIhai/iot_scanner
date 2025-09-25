@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Scan Results</title>
+</head>
+<body>
+    <h1>Scan Results for {{ host }}</h1>
+    <table border="1" cellpadding="5">
+        <tr>
+            <th>Port</th>
+            <th>Open</th>
+            <th>Banner</th>
+            <th>CVEs</th>
+        </tr>
+        {% for r in results %}
+        <tr>
+            <td>{{ r.port }}</td>
+            <td>{{ r.open }}</td>
+            <td>{{ r.banner }}</td>
+            <td>
+                {% for cve in r.cves %}
+                    {{ cve.cve }}<br>
+                {% endfor %}
+            </td>
+        </tr>
+        {% endfor %}
+    </table>
+    <br>
+    <a href="/">Back to Scan</a>
+</body>
+</html>

@@ -1,0 +1,64 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>IoT Light Vulnerability Report</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 1000px; margin: 40px auto; }
+    h1, h2 { color: #333; }
+    table { border-collapse: collapse; width: 100%; margin: 20px 0; }
+    th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+    th { background: #f5f5f5; }
+    .ok { color: green; font-weight: bold; }
+    .warn { color: red; font-weight: bold; }
+    .note { font-size: 0.9em; color: #666; }
+  </style>
+</head>
+<body>
+  <h1>IoT Light Vulnerability Report</h1>
+
+  <h2>Scan Info</h2>
+  <p>
+    Target: <strong>{{ report.meta.target }}</strong><br>
+    Scan Time: {{ report.meta.scan_time }}
+  </p>
+
+  <h2>Open Ports</h2>
+  {% if report.results %}
+    <table>
+      <tr>
+        <th>Port</th>
+        <th>Status</th>
+        <th>Banner</th>
+        <th>CVEs</th>
+      </tr>
+      {% for entry in report.results %}
+      <tr>
+        <td>{{ entry.port }}</td>
+        <td>{% if entry.open %}<span class="ok">Open</span>{% else %}Closed{% endif %}</td>
+        <td>{{ entry.banner or '-' }}</td>
+        <td>
+          {% if entry.cves %}
+            <ul>
+              {% for cve in entry.cves %}
+                <li><strong>{{ cve.cve_id }}</strong>: {{ cve.description }}</li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <span class="ok">None Found</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <p>No scan results available.</p>
+  {% endif %}
+
+  <h2>Notes</h2>
+  <p class="note">
+    This is a lightweight educational scanner. CVE matches are based on banner text and may include false positives.
+    For accurate assessments, always cross-check with the official NVD database.
+  </p>
+</body>
+</html>
