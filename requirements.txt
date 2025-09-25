@@ -1,5 +1,6 @@
-Flask
+Flask==2.3.2
 scapy
 requests
 paramiko
 netaddr
+gunicorn==21.2.0
