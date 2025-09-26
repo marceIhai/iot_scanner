@@ -16,3 +16,6 @@ cve_db = [
         "cves": ["CVE-2021-23017"]
     }
 ]
+def load_cve_db():
+    # your code here
+    pass
