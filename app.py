@@ -1,8 +1,11 @@
 from flask import Flask, request, render_template
 from scanner.portscan import scan_host
 from scanner.discover import ping_sweep
+from scanner.cve_match import match_cves
+from scanner.cve_fetcher import fetch_cves
 import webbrowser
 import threading
+
 
 app = Flask(__name__)
 

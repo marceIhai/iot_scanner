@@ -1,6 +1,7 @@
 # scanner/discover.py
 import subprocess
 import platform
+from .portscan import scan_host
 
 def ping_sweep(subnet="192.168.1.0/24"):
     live_hosts = []
