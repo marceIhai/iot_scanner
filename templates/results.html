@@ -1,52 +1,37 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Scan Results</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-</head>
+<!-- FILE: templates/results.html -->
+<!doctype html>
+<html>
+<head><title>Results for {{ host }}</title></head>
 <body>
-<div class="container mt-5">
-    <h1 class="mb-4">Scan Results for <span class="text-primary">{{ host }}</span></h1>
+  <h1>Scan results for {{ host }}</h1>
+  <p><a href="{{ url_for('index') }}">New scan</a></p>
 
-    <table class="table table-bordered table-striped table-hover">
-        <thead class="table-dark">
-            <tr>
-                <th>Port</th>
-                <th>Status</th>
-                <th>Banner</th>
-                <th>CVEs</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for r in results %}
-            <tr>
-                <td>{{ r.port }}</td>
-                <td>
-                    {% if r.open %}
-                        <span class="badge bg-success">Open</span>
-                    {% else %}
-                        <span class="badge bg-danger">Closed</span>
-                    {% endif %}
-                </td>
-                <td>{{ r.banner if r.banner else "-" }}</td>
-                <td>
-                    {% if r.cves %}
-                        <ul class="mb-0">
-                            {% for cve in r.cves %}
-                                <li>{{ cve.cve }}</li>
-                            {% endfor %}
-                        </ul>
-                    {% else %}
-                        <span>-</span>
-                    {% endif %}
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+  {% for entry in results %}
+  <div style="border:1px solid #ddd; padding:10px; margin:10px 0;">
+    <strong>Port {{ entry.port }}</strong>
+    <div>Banner: <code>{{ entry.banner or "—" }}</code></div>
 
-    <a href="/" class="btn btn-primary mt-3">Back to Scan</a>
-</div>
+    {% if entry.error_msg %}
+      <div style="color:orange; font-weight:700; margin-top:6px;">
+        {{ entry.error_msg }}
+      </div>
+    {% elif entry.cves %}
+      <h4>Vulnerabilities ({{ entry.cves|length }})</h4>
+      <ul>
+        {% for cve in entry.cves %}
+          <li>
+            <strong>{{ cve.id }}</strong>
+            {% if cve.cvss %}<span> — CVSS: {{ cve.cvss }}</span>{% endif %}
+            <div style="font-size:0.95em; color:#333;">{{ cve.description }}</div>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <div style="color:green; font-weight:700; margin-top:6px;">
+        No known vulnerabilities found for this banner.
+      </div>
+    {% endif %}
+  </div>
+  {% endfor %}
 </body>
 </html>
