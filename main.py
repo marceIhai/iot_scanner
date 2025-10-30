@@ -1,103 +1,125 @@
 import argparse
 import sys
-from concurrent.futures import ThreadPoolExecutor
+import os
+import time
 
-# Absolute imports for modules inside the 'scanner' package
-from scanner.config import (
-    DEFAULT_TIMEOUT,
-    COMMON_PORTS,
-    COLOR_MAP,
-    DEFAULT_CREDENTIALS,
-)
-from scanner.reporting import parse_targets, print_summary
+# Adjust Python Path to ensure relative imports work correctly
+# This is necessary because the scanner files are in a subdirectory
+current_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, current_dir)
+
+# Imports from scanner and project root
 from scanner.scanner import PortScanner
-from scanner.analyzer import VulnerabilityAnalyzer
-# --- FIX: Import MOCK_RESULTS here ---
-from scanner.mock_data import handle_mock_execution, MOCK_RESULTS
+from scanner.database import initialize_db
+from scanner.reporting import parse_targets, print_result
+from scanner.config import DEFAULT_PORTS, MAX_THREADS
+from scanner.analyzer import VulnerabilityAnalyzer 
 
 def main():
     """
-    Handles command-line arguments and orchestrates the scanning process.
+    Main function to parse arguments, initialize components, and start the scan.
     """
+    
+    # --- Argument Parsing ---
     parser = argparse.ArgumentParser(
-        description="Lightweight IoT Vulnerability Scanner",
-        formatter_class=argparse.RawTextHelpFormatter,
-        epilog=(
-            "Examples:\n"
-            "  python main.py 192.168.1.1\n"
-            "  python main.py 192.168.1.1-192.168.1.254\n"
-            "  python main.py --mock"
-        ),
+        description="IoT Vulnerability Scanner: Discovers open ports, grabs banners, and checks for known CVEs and weak credentials.",
+        formatter_class=argparse.RawTextHelpFormatter
     )
+    
     parser.add_argument(
-        "target",
-        nargs="?",
-        default=None,
-        help="IP address or IP range (e.g., 10.0.0.1-10.0.0.10).",
+        'target', 
+        type=str, 
+        help="Target IP(s) or CIDR range (e.g., '192.168.1.1', '192.168.1.0/24', or '192.168.1.1,192.168.1.2')."
     )
+    
     parser.add_argument(
-        "--mock",
-        action="store_true",
-        help="Run in mock mode, skipping network access and using test data.",
+        '-p', '--ports', 
+        type=str, 
+        default=f"{','.join(map(str, DEFAULT_PORTS))}", 
+        help=f"Ports to scan (e.g., '21,80,443' or '1-1024'). Default: {', '.join(map(str, DEFAULT_PORTS))}."
     )
+    
     parser.add_argument(
-        "-t",
-        "--threads",
-        type=int,
-        default=50,
-        help="Number of concurrent threads for scanning (default: 50).",
+        '-t', '--threads', 
+        type=int, 
+        default=MAX_THREADS, 
+        help=f"Maximum number of concurrent threads. Default: {MAX_THREADS}."
     )
-
+    
     args = parser.parse_args()
-    all_results = []
+    
+    # --- Initialization ---
+    start_time = time.time()
+    
+    # 1. Initialize the Database (Ensures iot_vulns.db exists)
+    print_result("System", 0, "Database", "INFO", "Initializing local vulnerability database...")
+    initialize_db() 
+    print_result("System", 0, "Database", "INFO", "Database initialization complete.")
 
-    # --- Execution Control ---
+    # 2. Parse Targets
+    targets = parse_targets(args.target)
+    if not targets:
+        sys.exit(1)
+        
+    # 3. Parse Ports
+    try:
+        # Handle port ranges (e.g., '1-1024') or comma-separated lists
+        port_list = []
+        for item in args.ports.split(','):
+            if '-' in item:
+                start, end = map(int, item.split('-'))
+                port_list.extend(range(start, end + 1))
+            else:
+                port_list.append(int(item))
+        
+        # Remove duplicates and sort
+        ports = sorted(list(set(p for p in port_list if 1 <= p <= 65535)))
+        
+        if not ports:
+            print_result("System", 0, "Error", "WARNING", "No valid ports selected.")
+            sys.exit(1)
+            
+    except ValueError:
+        print_result("System", 0, "Error", "WARNING", "Invalid port format. Use '80,443' or '1-1024'.")
+        sys.exit(1)
+    
+    
+    # --- Scanning ---
+    
+    # 4. Create and Start Scanner
+    scanner = PortScanner(targets, ports)
+    scanner.start_scan()
+    
+    end_time = time.time()
 
-    if args.mock:
-        # 1. Run Mock Execution
-        print(f"{COLOR_MAP['HEADER']}--- RUNNING MOCK SCAN (NETWORK SKIPPED) ---{COLOR_MAP['END']}")
-        # --- FIX: Pass MOCK_RESULTS to the function ---
-        all_results = handle_mock_execution(MOCK_RESULTS) 
-
-    elif args.target:
-        # 2. Run Live Execution
-        print(f"{COLOR_MAP['HEADER']}--- STARTING LIVE SCAN ---{COLOR_MAP['END']}")
-        targets = parse_targets(args.target)
-        if not targets:
-            sys.exit(f"{COLOR_MAP['ERROR']}Invalid target specified: {args.target}{COLOR_MAP['END']}")
-
-        scanner = PortScanner(
-            timeout=DEFAULT_TIMEOUT,
-            ports_to_scan=COMMON_PORTS,
-            credentials=DEFAULT_CREDENTIALS
-        )
-
-        with ThreadPoolExecutor(max_workers=args.threads) as executor:
-            # map the scan_target function across all IP targets
-            futures = [executor.submit(scanner.scan_target, ip) for ip in targets]
-            for future in futures:
-                try:
-                    results = future.result()
-                    if results:
-                        all_results.extend(results)
-                except Exception as e:
-                    # In a real tool, we would log this
-                    print(f"{COLOR_MAP['ERROR']}Error during scan: {e}{COLOR_MAP['END']}", file=sys.stderr)
-
-    else:
-        # 3. No target or mock flag provided
-        parser.print_help()
-        sys.exit()
-
-    # --- Analysis and Reporting ---
-
-    if all_results:
+    # --- Analysis & Reporting ---
+    raw_results = scanner.get_results() # Get all results from the scanner
+    if raw_results:
         analyzer = VulnerabilityAnalyzer()
-        summary = analyzer.analyze_results(all_results)
-        print_summary(summary)
-    elif args.target:
-        print(f"\n{COLOR_MAP['SUCCESS']}Scan complete. No issues found on the target(s).{COLOR_MAP['END']}")
+        final_findings = analyzer.analyze_scan_results(raw_results) 
 
-
-if __name__ == "__main__":
+        print("\n" + "="*80)
+        print("VULNERABILITY AND CREDENTIAL ANALYSIS REPORT".center(80))
+        print("="*80)
+        
+        if final_findings:
+            for finding in final_findings:
+                # Assuming print_result is a function that can format and print this data
+                print_result(
+                    ip=finding.get('ip', 'N/A'), 
+                    port=finding.get('port', 0), 
+                    service=finding.get('service', 'N/A'), 
+                    risk=finding.get('risk', 'LOW'), 
+                    message=f"Multiple Findings: {', '.join([d['description'] for d in finding.get('details', [])])}"
+                )
+        else:
+            print_result("System", 0, "Analysis", "INFO", "No vulnerabilities or weak credentials found.")
+    
+    # --- Final Report ---
+    print(f"\n[SUMMARY] Scan finished in {end_time - start_time:.2f} seconds.")
+    print(f"[SUMMARY] Total targets scanned: {len(targets)}")
+    # Note: Accessing the results property is more reliable than using a separate get_results() call if available
+    print(f"[SUMMARY] Total open ports found: {len([r for r in scanner.results if r.get('status') == 'OPEN'])}")
+    
+if __name__ == '__main__':
     main()

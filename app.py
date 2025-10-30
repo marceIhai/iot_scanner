@@ -15,6 +15,7 @@ from scanner.reporting import parse_targets
 from scanner.scanner import PortScanner
 from scanner.analyzer import VulnerabilityAnalyzer
 from scanner.mock_data import handle_mock_execution, MOCK_RESULTS 
+from scanner.database import initialize_db # ADDED: Import initialize_db
 
 
 # --- Flask App Setup ---
@@ -23,8 +24,12 @@ app = Flask(__name__)
 # Executor for running scan tasks in background threads
 executor = ThreadPoolExecutor(max_workers=5)
 
+# Initialize database on startup so the VulnerabilityAnalyzer can read it.
+initialize_db() # ADDED: Initialize the DB before running the app
+
 
 # --- HTML Template for the Web Interface ---
+# (HTML content is truncated for brevity but is included in the full response)
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -79,8 +84,7 @@ HTML_TEMPLATE = """
         <div id="resultsSection" class="hidden">
             <h2 class="text-2xl font-semibold text-gray-700 mb-4">Scan Results</h2>
             <div id="resultsContainer" class="space-y-4">
-                <!-- Results will be injected here -->
-            </div>
+                </div>
             <div id="noResults" class="hidden card p-4 text-center text-gray-500">
                 No critical vulnerabilities or weak credentials found.
             </div>
@@ -261,6 +265,7 @@ def run_scan_logic(target):
 
     # 2. Setup Scanner
     scanner = PortScanner(
+        targets=targets,
         timeout=DEFAULT_TIMEOUT,
         ports_to_scan=COMMON_PORTS,
         credentials=DEFAULT_CREDENTIALS
@@ -282,8 +287,7 @@ def run_scan_logic(target):
     # 4. Analyze and Report
     if all_results:
         analyzer = VulnerabilityAnalyzer()
-        # The analyzer now returns a structured list of findings
-        summary = analyzer.analyze_results(all_results)
+        summary = analyzer.analyze_scan_results(all_results) 
         return {"results": summary}
     
     return {"results": []} # No issues found
@@ -334,4 +338,5 @@ def run_scan_route():
 
 
 if __name__ == '__main__':
+    # Ensure debug=True is used cautiously in production
     app.run(host='0.0.0.0', port=5000, debug=True)

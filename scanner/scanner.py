@@ -1,137 +1,169 @@
 import socket
-import base64
+import netaddr
+import ssl
 import sys
-from .config import DEFAULT_TIMEOUT, COMMON_PORTS, DEFAULT_CREDENTIALS
-from .reporting import print_result # Used here just for debugging/immediate feedback, but mainly for modularity
+import time
+from concurrent.futures import ThreadPoolExecutor
 
-# PortScanner class handles all network interactions
+# --- Local imports ---
+from .config import COMMON_PORTS, DEFAULT_TIMEOUT, MAX_THREADS, DEFAULT_CREDENTIALS
+from .reporting import print_result, parse_targets 
+
 class PortScanner:
-    def __init__(self, timeout, ports_to_scan, credentials):
-        self.timeout = timeout
+    """
+    Handles network scanning, port status checks, and banner grabbing.
+    """
+    def __init__(self, targets, ports_to_scan=COMMON_PORTS, timeout=DEFAULT_TIMEOUT, credentials=DEFAULT_CREDENTIALS):
+        """Initializes the scanner with targets and configuration."""
+        self.targets = targets
         self.ports_to_scan = ports_to_scan
+        self.timeout = timeout
         self.credentials = credentials
+        self.results = []
+        self.executor = ThreadPoolExecutor(max_workers=MAX_THREADS)
+        
+    def _check_credentials(self, ip, port, service_type):
+        """
+        Placeholder for weak credential check. This function is mostly a placeholder 
+        in PortScanner but is called by the Analyzer. It is kept here for clarity 
+        but the main logic is in analyzer.py.
+        """
+        return None
 
-    def _get_banner(self, s, port):
-        """Attempts to read a service banner from the socket."""
+    def _grab_banner(self, ip, port, s):
+        """Attempts to grab a service banner using protocol-specific probes."""
+        
         try:
-            # Send a basic request for HTTP or wait for banner for others
-            if port in [80, 8080]:
-                # Minimal HTTP request to force a banner/response
-                s.send(b"HEAD / HTTP/1.0\r\n\r\n")
+            s.settimeout(1.0) # Set a consistent timeout for reading
             
-            # Receive up to 1024 bytes
-            banner = s.recv(1024).decode('utf-8', errors='ignore').strip()
-            return banner
+            # --- Protocol Probes ---
+            if port in [80, 443, 8080]:
+                # HTTP/HTTPS: Send a basic request to get server headers
+                request = b"GET / HTTP/1.0\r\nHost: %s\r\nUser-Agent: IoTScanner\r\n\r\n" % ip.encode()
+                s.sendall(request)
+                
+            elif port == 22:
+                # SSH: Banner is usually sent immediately, or after a specific client greeting
+                # The simple 's.recv' below should capture it if the connection succeeds.
+                pass
+                
+            # --- Receive Banner ---
+            banner = s.recv(4096).decode('utf-8', errors='ignore').strip()
+            
+            if not banner:
+                return "No banner received"
+                
+            # Clean up the banner for better matching
+            # For HTTP, extract the first line (HTTP status) and the Server header
+            if port in [80, 443, 8080]:
+                lines = banner.split('\n')
+                server_header = next((line for line in lines if line.lower().startswith('server:')), None)
+                
+                if server_header:
+                    # e.g., "Server: Apache/2.4.6 (CentOS)
+                    return server_header.strip()
+                elif lines:
+                    # Return the first line (e.g., HTTP/1.0 200 OK)
+                    return lines[0].strip()
+            
+            # For other protocols, return the first few lines
+            return "\n".join(banner.split('\n')[:2]).strip()
+            
         except socket.timeout:
-            return ""
+            return "Read timeout"
         except Exception:
-            return ""
+            return "No banner received or protocol error"
 
-    def _check_http_auth(self, ip, port, banner):
-        """Actively checks for default HTTP Basic Authentication credentials."""
-        for username, password in self.credentials:
-            try:
-                # Prepare Basic Auth header
-                auth_str = f"{username}:{password}"
-                auth_encoded = base64.b64encode(auth_str.encode()).decode()
-                
-                # Construct the HTTP request with the Authorization header
-                request = (
-                    f"GET / HTTP/1.1\r\n"
-                    f"Host: {ip}\r\n"
-                    f"Authorization: Basic {auth_encoded}\r\n"
-                    f"Connection: close\r\n"
-                    f"\r\n"
-                )
 
-                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                s.settimeout(self.timeout)
-                s.connect((ip, port))
-                s.sendall(request.encode())
+    def scan_port(self, ip, port):
+        """Connects to a single port to check status and grab a banner."""
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(self.timeout)
+        result = {'ip': ip, 'port': port, 'status': 'CLOSED', 'banner': '', 'service_type': ''}
+        
+        try:
+            # 1. Connect to the port
+            if sock.connect_ex((ip, port)) == 0:
+                result['status'] = 'OPEN'
                 
-                response = s.recv(1024).decode('utf-8', errors='ignore')
-                s.close()
+                # Use a wrapper for TLS/SSL (e.g., 443) before grabbing the banner
+                current_sock = sock
+                if port in [443, 8443]:
+                    try:
+                        # Attempt to wrap the socket for secure connection
+                        current_sock = ssl.wrap_socket(sock, do_handshake_on_connect=False)
+                        current_sock.settimeout(self.timeout)
+                        current_sock.connect((ip, port))
+                        current_sock.do_handshake()
+                        result['service_type'] = 'https'
+                    except (ssl.SSLError, socket.timeout):
+                        # If SSL handshake fails, it might still be a plaintext HTTP or a different service
+                        current_sock = sock
+                        result['service_type'] = 'http'
+                    except Exception:
+                        current_sock = sock
                 
-                # If the response indicates success (200 OK), default creds worked.
-                if "200 OK" in response:
-                    return {
-                        'ip': ip,
-                        'port': port,
-                        'risk_category': 'WEAK_CRED',
-                        'protocol': 'HTTP',
-                        'username': username,
-                        'password': password
-                    }
-            except Exception:
-                continue # Failed attempt, try next credential pair
-        return None
+                # 3. Grab Banner
+                result['banner'] = self._grab_banner(ip, port, current_sock)
+                
+                # 4. Determine service type (refine based on common port)
+                if port == 21: result['service_type'] = 'ftp'
+                elif port == 22: result['service_type'] = 'ssh'
+                elif port == 23: result['service_type'] = 'telnet'
+                elif port == 80 and not result['service_type']: result['service_type'] = 'http'
+                elif port == 443 and not result['service_type']: result['service_type'] = 'https'
+                elif port == 8080: result['service_type'] = 'http-alt'
+                elif port == 8443: result['service_type'] = 'https-alt'
+                
+                print_result(ip, port, result['service_type'], "INFO", f"Port is open. Banner: {result['banner'][:50]}...")
+            
+        except socket.error as e:
+            print_result(ip, port, '', "ERROR", f"Socket Error: {e}")
+        except Exception as e:
+            print_result(ip, port, '', "ERROR", f"Unexpected Error: {e}")
+        finally:
+            sock.close()
+            
+        return result if result['status'] == 'OPEN' else None
 
-    def _check_mqtt_auth(self, ip, port, banner):
-        """
-        Simulates an MQTT check. Since full MQTT packet construction is complex,
-        we flag the open port and check for a silent banner for educational purposes.
-        """
-        if port in [1883, 8883] and not banner:
-            # If the port is open and gives no banner, it's likely a silent protocol like MQTT.
-            # Flagging it for manual weak credential analysis.
-            return {
-                'ip': ip,
-                'port': port,
-                'risk_category': 'OPEN_PORT',
-                'protocol': 'MQTT',
-                'banner': 'MQTT Broker (Silent Banner)',
-                'description': 'MQTT port open, recommend checking for anonymous access and weak credentials.'
-            }
-        return None
+    # (scan_target, start_scan, and get_results methods remain unchanged)
 
     def scan_target(self, ip):
-        """
-        Scans all defined ports on a single IP address and runs checks.
-        Returns a list of dictionaries for any discovered issues.
-        """
-        results = []
-        for port in self.ports_to_scan:
-            try:
-                # 1. Port Check
-                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                s.settimeout(self.timeout)
-                s.connect((ip, port))
-                
-                # Port is open
-                
-                # 2. Banner Grabbing
-                banner = self._get_banner(s, port)
-                
-                # 3. Active Checks (HTTP and MQTT)
-                active_result = None
-                
-                if port in [80, 443, 8080]:
-                    active_result = self._check_http_auth(ip, port, banner)
-                
-                # if not active_result and port in [1883, 8883]:
-                #    active_result = self._check_mqtt_auth(ip, port, banner)
-
-                if active_result and active_result.get('risk_category') == 'WEAK_CRED':
-                    results.append(active_result)
-                
-                # If no critical weak credential found, record the open port
-                if not any(r.get('risk_category') == 'WEAK_CRED' for r in results):
-                    results.append({
-                        'ip': ip,
-                        'port': port,
-                        'risk_category': 'OPEN_PORT',
-                        'protocol': 'TCP',
-                        'banner': banner
-                    })
-
-                s.close()
-                
-            except socket.error:
-                # Port is closed or connection failed
-                pass
-            except Exception as e:
-                # General error handling
-                # In a real tool, this would be logged extensively
-                pass
+        """Scans all defined ports for a single IP address concurrently."""
+        print_result(ip, 0, "System", "INFO", f"Starting scan for {ip}...")
         
-        return results
+        target_results = []
+        future_to_port = {
+            self.executor.submit(self.scan_port, ip, port): port 
+            for port in self.ports_to_scan
+        }
+        
+        # Collect results as they complete
+        for future in future_to_port:
+            port_result = future.result()
+            if port_result:
+                target_results.append(port_result)
+        
+        print_result(ip, 0, "System", "INFO", f"Scan finished for {ip}.")
+        return target_results
+
+    def start_scan(self):
+        """Initiates the scan across all targets."""
+        print_result("System", 0, "Scanner", "INFO", f"Starting scan on {len(self.targets)} targets...")
+        
+        future_to_ip = {
+            self.executor.submit(self.scan_target, ip): ip
+            for ip in self.targets
+        }
+
+        # Collect results from all targets
+        for future in future_to_ip:
+            ip_results = future.result()
+            if ip_results:
+                self.results.extend(ip_results)
+                
+        print_result("System", 0, "Scanner", "INFO", "All target scans complete.")
+        
+    def get_results(self):
+        """Returns the accumulated scan results."""
+        return self.results

@@ -1,36 +1,35 @@
-# --- Network Configuration ---
-DEFAULT_TIMEOUT = 1.0  # Seconds to wait for a socket connection
-SCAN_PORTS = 100 # Number of common ports to scan (e.g., top 100)
+# --- SCANNING CONFIGURATION ---
+# Default timeout in seconds for TCP connection attempts
+DEFAULT_TIMEOUT = 1.0 
+SCAN_TIMEOUT = DEFAULT_TIMEOUT # Alias to fix ImportError in scanner.scanner.py
 
-COMMON_PORTS = [
-    21,    # FTP
-    23,    # Telnet
-    80,    # HTTP
-    443,   # HTTPS
-    8080,  # Alternate HTTP
-    22,    # SSH
-    5900,  # VNC
-    1883,  # MQTT (unsecured)
-    8883,  # MQTT (secured)
-    3306,  # MySQL
-    5000,  # Common UPnP/API port
-]
+# Maximum number of concurrent threads for scanning targets (used by main.py CLI)
+MAX_THREADS = 50 
 
+# --- PORT LISTS ---
+# Common ports to scan by default (used by both app.py and main.py)
+COMMON_PORTS = [21, 22, 23, 80, 443, 8080, 8443, 2000, 5000, 554, 1900]
+DEFAULT_PORTS = COMMON_PORTS # Alias used by main.py
+
+# --- WEAK CREDENTIALS ---
+# List of default username/password tuples for brute-force login checks
 DEFAULT_CREDENTIALS = [
-    ("admin", "admin"),
-    ("user", "user"),
-    ("root", "root"),
-    ("admin", "123456"),
-    ("guest", "guest"),
+    ('admin', 'admin'),
+    ('root', 'root'),
+    ('admin', '123456'),
+    ('ubnt', 'ubnt'),
+    ('guest', 'guest'),
+    ('user', 'user'),
+    ('pi', 'raspberry'),
+    ('super', '1234')
 ]
 
-# --- Console Colors (ANSI) ---
+# --- COLOR MAP (for CLI output in main.py) ---
 COLOR_MAP = {
-    "HEADER": "\033[95m",
-    "SUCCESS": "\033[92m",
-    "WARNING": "\033[93m",
-    "FAIL": "\033[91m",
-    "RISK_HIGH": "\033[41m\033[97m",  # Red Background, White Text
-    "RISK_MEDIUM": "\033[43m\033[30m", # Yellow Background, Black Text
-    "END": "\033[0m"
+    "CRITICAL": "\033[91m", # Red
+    "HIGH": "\033[93m",     # Yellow
+    "MEDIUM": "\033[94m",   # Blue
+    "LOW": "\033[92m",      # Green
+    "INFO": "\033[96m",     # Cyan
+    "ENDC": "\033[0m",      # Reset (end color code)
 }
