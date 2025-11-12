@@ -3,58 +3,57 @@ import sys
 import os
 import argparse
 import re
+import sqlite3
 from typing import Optional, Dict, Any, List
 
-# --- Path Adjustment ---
-# Ensures the script can find scanner.database when run directly
 current_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = current_dir
-sys.path.insert(0, project_root)
-# -------------------------------------------------------------
+DB_PATH = os.path.join(current_dir, 'vulnerabilities.db')
 
-# Imports from scanner/database.py
-try:
-    from scanner.database import add_vulnerability, initialize_db, DB_PATH 
-except ImportError as e:
-    # If this fails, the core database file is missing or broken.
-    print(f"FATAL ERROR: Could not import database utility: {e}. Ensure scanner/database.py is correct.", file=sys.stderr)
-    sys.exit(1)
+def initialize_db():
+    """Ensures the SQLite database and the 'vulnerabilities' table exist."""
+    print(f"[*] Initializing database table at {DB_PATH}...")
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        # The table structure uses banner_keyword as the PRIMARY KEY to prevent duplicates
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS vulnerabilities (
+                banner_keyword TEXT PRIMARY KEY,
+                cve_id TEXT NOT NULL,
+                description TEXT
+            )
+        """)
+        conn.commit()
+        conn.close()
+        print("[+] Database table 'vulnerabilities' ready.")
+        return True
+    except sqlite3.Error as e:
+        print(f"[!] FATAL DB Error: {e}", file=sys.stderr)
+        return False
 
+
+# --- Utility Functions ---
 
 def clean_cpe_part(part: str) -> str:
-    """
-    Cleans up a single CPE part by removing wildcards, common generics, and non-essential characters.
-    """
-    if part in ['*', '-', 'n', 'a', 'any', 'none']:
+    if part in ['*', '-', 'n', 'a', 'any', 'none', ':-', '0', 'x']:
         return ''
-    # Only allow letters, numbers, dots, and hyphens/underscores (common in versions/products)
+    # Only allow letters, numbers, dots, and hyphens/underscores
     cleaned = re.sub(r'[^a-zA-Z0-9._-]', '', part)
     return cleaned.strip()
 
 
 def find_first_cpe_uri(data: Any) -> Optional[str]:
-    """
-    Recursively searches the CVE data structure for the first valid CPE URI 
-    (starting with 'cpe:2.3:'). This handles both NVD 1.1 and 2.0 structures.
-    """
-    
-    # Base case: If data is a string
     if isinstance(data, str) and data.startswith('cpe:2.3:'):
         return data
 
-    # Recursive case: If data is a dictionary
     elif isinstance(data, dict):
         for key, value in data.items():
-            # Check for common CPE keys in new NVD format
-            if key in ['cpe', 'criteria', 'cpe23Uri'] and isinstance(value, str) and value.startswith('cpe:2.3:'):
+            if key in ['cpe23Uri', 'criteria'] and isinstance(value, str) and value.startswith('cpe:2.3:'):
                 return value
-            
-            # Recurse into nested structures
             result = find_first_cpe_uri(value)
             if result:
                 return result
     
-    # Recursive case: If data is a list
     elif isinstance(data, list):
         for item in data:
             result = find_first_cpe_uri(item)
@@ -63,55 +62,48 @@ def find_first_cpe_uri(data: Any) -> Optional[str]:
     
     return None
 
-
 def extract_keyword_from_cpe(cve_data: Dict[str, Any]) -> Optional[str]:
-    """
-    Extracts the highest-quality, cleaned product/version keyword from the CPE string.
-    """
     cpe_uri = find_first_cpe_uri(cve_data)
     
     if not cpe_uri:
         return None
 
-    # CPE format: cpe:2.3:a:vendor:product:version:update:...
     parts = cpe_uri.split(':')
     
+    # We require at least 6 parts (cpe, 2.3, a, vendor, product, version)
     if len(parts) >= 6:
-        vendor = clean_cpe_part(parts[3]).lower()
-        product = clean_cpe_part(parts[4]).lower()
+        # Product is parts[4], Version is parts[5]
+        product = clean_cpe_part(parts[4]).lower().replace('_', ' ').replace('-', ' ')
         version = clean_cpe_part(parts[5]).lower()
         
-        # 1. Prioritize Product/Version (e.g., 'vsftpd/3.0.3')
-        if product and version:
-            return f"{product}/{version}"
-        # 2. Fallback to just Product name
-        elif product:
-            return product
-        # 3. Fallback to just Vendor (if product is not specific)
-        elif vendor:
-            return vendor
-    
-    return None
+        # --- RELAXED LOGIC ---
+        is_generic_placeholder = (version in ['any', '0', 'x', 'z', 'na', '1.0', '1.0.0'])
 
+        if product:
+            # 1. If the version is specific (not a known generic placeholder), use both.
+            if version and not is_generic_placeholder and len(version) > 1:
+                final_keyword = f"{product} {version}"
+                return final_keyword
+            # 2. If the version IS generic (or missing), use ONLY the product name.
+            # This captures ancient, unpatched software like vsFTPd 2.3.4.
+            else: 
+                return product # <-- This re-introduces generic product keywords
+        
+    return None
 
 def parse_and_insert_cve_json(filename: str):
     """
-    Loads the JSON file and inserts vulnerabilities into the database.
+    Loads the JSON file and inserts vulnerabilities into the database using batching.
     """
     abs_filename = os.path.abspath(filename)
     
     if not os.path.exists(abs_filename):
-        print(f"Error: Input file not found: {abs_filename}", file=sys.stderr)
+        print(f"[E] Error: Input file not found: {abs_filename}", file=sys.stderr)
         return
 
-    # Ensure DB is ready before starting
-    initialize_db() 
-    
-    print(f"DEBUG: Database file expected at: {DB_PATH}")
-    
-    successful_inserts = 0
-    skipped_count = 0
-    total_processed = 0
+    # Initialize the database (this will create it if it doesn't exist)
+    if not initialize_db():
+        return
 
     print(f"{os.linesep}--- Starting JSON import from {abs_filename} ---")
     
@@ -119,57 +111,96 @@ def parse_and_insert_cve_json(filename: str):
         with open(abs_filename, 'r', encoding='utf-8') as f:
             data = json.load(f)
 
-        cve_list = data.get('vulnerabilities', [])
+        cve_list = data.get('vulnerabilities', data.get('CVE_Items', []))
+        
         if not cve_list:
-             # Fallback for older NVD 1.1 format which starts with "CVE_Items"
-             cve_list = data.get('CVE_Items', [])
+            print("[i] JSON file appears to be empty or does not contain 'vulnerabilities' or 'CVE_Items' keys.")
+            return
 
-        for entry in cve_list:
-            total_processed += 1
+        total_processed = len(cve_list)
+        print(f"[i] Found {total_processed} CVE entries to process.")
+        
+        # --- BATCHING CONFIGURATION ---
+        BATCH_SIZE = 500
+        records_to_insert = []
+        
+        # Use a temporary connection for the batch operation
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        for i, entry in enumerate(cve_list):
             
-            # For NVD 2.0, the CVE object is nested inside the entry
             cve_data = entry.get('cve', entry) 
-            cve_id = cve_data.get('id', 'N/A')
+            cve_id = cve_data.get('id', cve_data.get('CVE_data_meta', {}).get('ID', 'N/A'))
             
-            # Extract English description
-            descriptions = cve_data.get('descriptions', [])
-            description_text = next((d['value'] for d in descriptions if d.get('lang') == 'en'), 
-                                    'No English description available.')
+            # Extract English description (best effort)
+            description_text = 'No English description available.'
+            try:
+                descriptions = cve_data.get('descriptions', [])
+                description_text = next((d['value'] for d in descriptions if d.get('lang') == 'en'), description_text)
+                
+                if description_text == 'No English description available.':
+                    desc_data = cve_data.get('description', {}).get('description_data', [])
+                    description_text = next((d['value'] for d in desc_data if d.get('lang') == 'en'), desc_data[0]['value'])
 
+            except Exception:
+                pass
+
+            # --- KEYWORD GENERATION (Using the relaxed product/version logic) ---
             banner_keyword = extract_keyword_from_cpe(cve_data) 
             
             if not banner_keyword:
-                # If no usable CPE keyword is found, skip
-                skipped_count += 1
+                # Skips entries with no identifiable product
                 continue
             
-            # Ensure the keyword is not excessively long
-            keyword_to_insert = banner_keyword.strip()
-            if len(keyword_to_insert) > 100:
-                 keyword_to_insert = keyword_to_insert[:100] 
+            # Truncate keyword and description
+            keyword_to_insert = banner_keyword[:100]
+            description_to_insert = description_text.strip()[:255]
 
-            if add_vulnerability(keyword_to_insert, cve_id.strip(), description_text.strip()):
-                successful_inserts += 1
-                if successful_inserts % 100 == 0:
-                    sys.stdout.write(f"Progress: {successful_inserts} items inserted...\r")
-                    sys.stdout.flush()
-            else:
-                skipped_count += 1
-        
-        sys.stdout.write(f"Progress: {successful_inserts} items inserted...{os.linesep}")
+            # Prepare record for batch insertion
+            records_to_insert.append((keyword_to_insert, cve_id.strip(), description_to_insert))
+            
+            # Execute batch insert
+            if len(records_to_insert) >= BATCH_SIZE:
+                # Use INSERT OR IGNORE to handle duplicate banner_keywords gracefully
+                cursor.executemany("""
+                    INSERT OR IGNORE INTO vulnerabilities (banner_keyword, cve_id, description) 
+                    VALUES (?, ?, ?)
+                """, records_to_insert)
+                
+                conn.commit()
+                records_to_insert = []
+                
+                sys.stdout.write(f"Progress: {i+1}/{total_processed} items processed...\r")
+                sys.stdout.flush()
+
+        # Final commit for any remaining records
+        if records_to_insert:
+            cursor.executemany("""
+                INSERT OR IGNORE INTO vulnerabilities (banner_keyword, cve_id, description) 
+                VALUES (?, ?, ?)
+            """, records_to_insert)
+            conn.commit()
+            
+        # Get the final count of records in the database
+        final_inserted_count = cursor.execute("SELECT COUNT(*) FROM vulnerabilities").fetchone()[0]
+
+        sys.stdout.write(f"Progress: {total_processed}/{total_processed} items processed.{os.linesep}")
         sys.stdout.flush()
-
-    except json.JSONDecodeError:
-        print(f"Error: Could not decode JSON file {abs_filename}. Check file format.", file=sys.stderr)
-        return
-    except Exception as e:
-        print(f"An unexpected error occurred during import: {e}", file=sys.stderr)
-        return
         
+    except sqlite3.Error as e:
+        print(f"[E] Database Transaction Error: {e}", file=sys.stderr)
+    except json.JSONDecodeError:
+        print(f"[E] Error: Could not decode JSON file {abs_filename}. Check file format.", file=sys.stderr)
+    except Exception as e:
+        print(f"[E] An unexpected error occurred during import: {e}", file=sys.stderr)
+    finally:
+        if 'conn' in locals() and conn:
+            conn.close()
+
     print(f"--- JSON Import Complete ---")
     print(f"Total entries processed: {total_processed}")
-    print(f"Successfully added: {successful_inserts} new vulnerability entries.")
-    print(f"Skipped (existing or incomplete data): {skipped_count} entries.")
+    print(f"Current total vulnerability entries in DB: {final_inserted_count}")
 
 
 if __name__ == "__main__":

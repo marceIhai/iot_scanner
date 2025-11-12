@@ -1,0 +1,97 @@
+{
+    "summary": {
+        "timestamp": "2025-11-12T15:46:38.545518",
+        "hosts_found": 2,
+        "total_issues_found": 3,
+        "vulnerability_matches_count": 2,
+        "weak_credentials_count": 1,
+        "exposed_files_count": 0
+    },
+    "host_overview": [
+        {
+            "ip": "192.168.100.3",
+            "mac": "b0:95:75:74:93:a0",
+            "vendor": "Mock Vendor",
+            "fp_data": {
+                "hostname": "N/A",
+                "os": "Linux/Unix/macOS",
+                "tcp_services": {
+                    "22": "SSH-2.0-OpenSSH_8.0",
+                    "80": "Apache/2.4.38"
+                },
+                "tcp_window_sizes": {
+                    "22": 5840,
+                    "80": 29200
+                },
+                "udp_ports": {
+                    "53": "Open (DNS Server)"
+                }
+            },
+            "vulns": [
+                {
+                    "ip": "192.168.100.3",
+                    "cve_id": "CVE-2025-0001",
+                    "description": "SSH bug 1",
+                    "matched_keyword": "ssh",
+                    "banner": "SSH-2.0-OpenSSH_8.0"
+                }
+            ]
+        },
+        {
+            "ip": "192.168.100.1",
+            "mac": "c0:f9:b0:00:68:ba",
+            "vendor": "Mock Vendor",
+            "fp_data": {
+                "hostname": "N/A",
+                "os": "Linux/Unix/macOS",
+                "tcp_services": {
+                    "22": "SSH-2.0-OpenSSH_8.0",
+                    "80": "Apache/2.4.38"
+                },
+                "tcp_window_sizes": {
+                    "22": 5840,
+                    "80": 29200
+                },
+                "udp_ports": {
+                    "53": "Open (DNS Server)"
+                }
+            },
+            "vulns": [
+                {
+                    "ip": "192.168.100.3",
+                    "cve_id": "CVE-2025-0001",
+                    "description": "SSH bug 1",
+                    "matched_keyword": "ssh",
+                    "banner": "SSH-2.0-OpenSSH_8.0"
+                }
+            ]
+        }
+    ],
+    "vulnerability_matches": [
+        {
+            "ip": "192.168.100.3",
+            "cve_id": "CVE-2025-0001",
+            "description": "SSH bug 1",
+            "matched_keyword": "ssh",
+            "banner": "SSH-2.0-OpenSSH_8.0"
+        },
+        {
+            "ip": "192.168.100.3",
+            "cve_id": "CVE-2025-0001",
+            "description": "SSH bug 1",
+            "matched_keyword": "ssh",
+            "banner": "SSH-2.0-OpenSSH_8.0"
+        }
+    ],
+    "weak_credentials": [
+        {
+            "ip": "192.168.100.3",
+            "service": "SSH",
+            "username": "root",
+            "password": "password",
+            "status": "Login Successful",
+            "port": 22
+        }
+    ],
+    "exposed_files": []
+}

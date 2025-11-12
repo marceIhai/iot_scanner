@@ -1,0 +1,49 @@
+{
+    "summary": {
+        "timestamp": "2025-11-12T20:32:58.476835",
+        "hosts_found": 6,
+        "total_issues_found": 3,
+        "vulnerability_matches_count": 0,
+        "weak_credentials_count": 0,
+        "exposed_files_count": 0
+    },
+    "host_overview": [
+        {
+            "ip": "192.168.100.3",
+            "issues_found": 2,
+            "tcp_services": {
+                "22": "SSH-2.0-dropbear_2012.55"
+            }
+        },
+        {
+            "ip": "192.168.100.15",
+            "issues_found": 0,
+            "tcp_services": {}
+        },
+        {
+            "ip": "192.168.100.1",
+            "issues_found": 0,
+            "tcp_services": {}
+        },
+        {
+            "ip": "192.168.100.28",
+            "issues_found": 1,
+            "tcp_services": {
+                "21": "220 KONICA MINOLTA FTP server ready."
+            }
+        },
+        {
+            "ip": "192.168.100.24",
+            "issues_found": 0,
+            "tcp_services": {}
+        },
+        {
+            "ip": "192.168.100.12",
+            "issues_found": 0,
+            "tcp_services": {}
+        }
+    ],
+    "vulnerability_matches": [],
+    "weak_credentials": [],
+    "exposed_files": []
+}

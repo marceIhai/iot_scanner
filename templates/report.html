@@ -1,64 +1,133 @@
-<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>IoT Light Vulnerability Report</title>
-  <style>
-    body { font-family: Arial, sans-serif; max-width: 1000px; margin: 40px auto; }
-    h1, h2 { color: #333; }
-    table { border-collapse: collapse; width: 100%; margin: 20px 0; }
-    th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
-    th { background: #f5f5f5; }
-    .ok { color: green; font-weight: bold; }
-    .warn { color: red; font-weight: bold; }
-    .note { font-size: 0.9em; color: #666; }
-  </style>
-</head>
-<body>
-  <h1>IoT Light Vulnerability Report</h1>
+{% extends "base.html" %}
 
-  <h2>Scan Info</h2>
-  <p>
-    Target: <strong>{{ report.meta.target }}</strong><br>
-    Scan Time: {{ report.meta.scan_time }}
-  </p>
+{% block content %}
+<h2 class="mb-4">Scan Results Report</h2>
 
-  <h2>Open Ports</h2>
-  {% if report.results %}
-    <table>
-      <tr>
-        <th>Port</th>
-        <th>Status</th>
-        <th>Banner</th>
-        <th>CVEs</th>
-      </tr>
-      {% for entry in report.results %}
-      <tr>
-        <td>{{ entry.port }}</td>
-        <td>{% if entry.open %}<span class="ok">Open</span>{% else %}Closed{% endif %}</td>
-        <td>{{ entry.banner or '-' }}</td>
-        <td>
-          {% if entry.cves %}
-            <ul>
-              {% for cve in entry.cves %}
-                <li><strong>{{ cve.cve_id }}</strong>: {{ cve.description }}</li>
-              {% endfor %}
+{% if error %}
+    <div class="alert alert-danger" role="alert">
+        {{ error }}
+    </div>
+{% elif report %}
+
+    <div class="card mb-4 bg-light summary-card">
+        <div class="card-body">
+            <h4 class="card-title">Summary</h4>
+            <ul class="list-group list-group-flush">
+                <li class="list-group-item d-flex justify-content-between align-items-center bg-light">
+                    Scan Date/Time:
+                    <strong>{{ report.summary.timestamp }}</strong>
+                </li>
+                <li class="list-group-item d-flex justify-content-between align-items-center bg-light">
+                    Hosts Found:
+                    <span class="badge bg-primary rounded-pill">{{ report.summary.hosts_found }}</span>
+                </li>
+                <li class="list-group-item d-flex justify-content-between align-items-center bg-light">
+                    Total Issues Found:
+                    <span class="badge bg-danger rounded-pill">{{ report.summary.total_issues_found }}</span>
+                </li>
             </ul>
-          {% else %}
-            <span class="ok">None Found</span>
-          {% endif %}
-        </td>
-      </tr>
-      {% endfor %}
-    </table>
-  {% else %}
-    <p>No scan results available.</p>
-  {% endif %}
+        </div>
+    </div>
+    
+    <ul class="nav nav-tabs" id="myTab" role="tablist">
+      <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="overview-tab" data-bs-toggle="tab" data-bs-target="#overview" type="button" role="tab" aria-controls="overview" aria-selected="true">Host Overview ({{ report.summary.hosts_found }})</button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="vulns-tab" data-bs-toggle="tab" data-bs-target="#vulns" type="button" role="tab" aria-controls="vulns" aria-selected="false">Vulnerability Matches ({{ report.summary.vulnerability_matches_count }})</button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="creds-tab" data-bs-toggle="tab" data-bs-target="#creds" type="button" role="tab" aria-controls="creds" aria-selected="false">Weak Credentials ({{ report.summary.weak_credentials_count }})</button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="files-tab" data-bs-toggle="tab" data-bs-target="#files" type="button" role="tab" aria-controls="files" aria-selected="false">Exposed Files ({{ report.summary.exposed_files_count }})</button>
+      </li>
+    </ul>
+    
+    <div class="tab-content pt-3" id="myTabContent">
+        
+        <div class="tab-pane fade show active" id="overview" role="tabpanel" aria-labelledby="overview-tab">
+            {% for host in report.host_overview %}
+            <div class="card mb-3 shadow-sm">
+                <div class="card-header bg-dark text-white">
+                    <h5>🖥️ {{ host.ip }} <small class="text-muted ms-3">MAC: {{ host.mac }} (Vendor: {{ host.vendor }})</small></h5>
+                </div>
+                <div class="card-body">
+                    <p class="mb-1"><strong>Hostname:</strong> {{ host.hostname }}</p>
+                    <p class="mb-1"><strong>OS Guess:</strong> {{ host.os_fingerprint }}</p>
+                    <h6>Open TCP Services:</h6>
+                    <ul class="list-group list-group-flush">
+                        {% for port, banner in host.tcp_services.items() %}
+                        <li class="list-group-item">
+                            <span class="badge bg-success me-2">{{ port }}</span> {{ banner if banner else "No Banner" }}
+                        </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
 
-  <h2>Notes</h2>
-  <p class="note">
-    This is a lightweight educational scanner. CVE matches are based on banner text and may include false positives.
-    For accurate assessments, always cross-check with the official NVD database.
-  </p>
-</body>
-</html>
+        <div class="tab-pane fade" id="vulns" role="tabpanel" aria-labelledby="vulns-tab">
+            {% for match in report.vulnerability_matches %}
+            <div class="card mb-3 issue-card shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title text-danger">{{ match.cve_id }} on {{ match.ip }}:{{ match.port }}</h5>
+                    <p class="card-text">{{ match.description }}</p>
+                    <ul class="list-inline small">
+                        <li class="list-inline-item"><strong>Matched Banner:</strong> <span class="badge bg-secondary">{{ match.banner }}</span></li>
+                        <li class="list-inline-item"><strong>Matched Keyword:</strong> <span class="badge bg-info">{{ match.matched_keyword }}</span></li>
+                    </ul>
+                </div>
+            </div>
+            {% endfor %}
+            {% if not report.vulnerability_matches %}
+                <div class="alert alert-success">✅ No vulnerability matches found.</div>
+            {% endif %}
+        </div>
+        
+        <div class="tab-pane fade" id="creds" role="tabpanel" aria-labelledby="creds-tab">
+            {% for cred in report.weak_credentials %}
+            <div class="card mb-3 issue-card shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title text-warning">⚠️ Weak Credentials Found on {{ cred.ip }}:{{ cred.port }}</h5>
+                    <p class="card-text">
+                        <strong>Service:</strong> {{ cred.service }}<br>
+                        <strong>Username:</strong> <span class="text-danger">{{ cred.username }}</span><br>
+                        <strong>Password:</strong> <span class="text-danger">{{ cred.password }}</span>
+                    </p>
+                </div>
+            </div>
+            {% endfor %}
+            {% if not report.weak_credentials %}
+                <div class="alert alert-success">✅ No weak/default credentials found.</div>
+            {% endif %}
+        </div>
+
+        <div class="tab-pane fade" id="files" role="tabpanel" aria-labelledby="files-tab">
+            {% for file_data in report.exposed_files %}
+            <div class="card mb-3 issue-card shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title text-info">📄 Exposed File on {{ file_data.ip }}</h5>
+                    <p class="card-text">
+                        <strong>URL:</strong> <a href="{{ file_data.url }}" target="_blank">{{ file_data.url }}</a><br>
+                        <strong>Path:</strong> {{ file_data.path }}<br>
+                        <strong>Status Code:</strong> <span class="badge bg-secondary">{{ file_data.status_code }}</span>
+                    </p>
+                </div>
+            </div>
+            {% endfor %}
+            {% if not report.exposed_files %}
+                <div class="alert alert-success">✅ No commonly exposed sensitive files found.</div>
+            {% endif %}
+        </div>
+
+    </div>
+    
+{% else %}
+    <div class="alert alert-info" role="alert">
+        Please run a scan from the home page or ensure a JSON report exists in the 'scan_reports' directory.
+    </div>
+{% endif %}
+
+{% endblock %}

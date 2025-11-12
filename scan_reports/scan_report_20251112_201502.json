@@ -1,0 +1,156 @@
+{
+    "summary": {
+        "timestamp": "2025-11-12T20:15:02.299161",
+        "hosts_found": 7,
+        "total_issues_found": 5,
+        "vulnerability_matches_count": 3,
+        "weak_credentials_count": 2,
+        "exposed_files_count": 0
+    },
+    "host_overview": [
+        {
+            "ip": "192.168.100.3",
+            "mac": "b0:95:75:74:93:a0",
+            "vendor": "TP-LINK TECHNOLOGIES CO.,LTD.",
+            "fp_data": {
+                "hostname": "N/A",
+                "os": "Linux/Unix/macOS (TTL <= 64, actual: 64)",
+                "tcp_services": {
+                    "22": "SSH-2.0-dropbear_2012.55"
+                },
+                "tcp_window_sizes": {
+                    "22": 5840
+                },
+                "udp_ports": {
+                    "53": "Open (DNS Server)"
+                }
+            }
+        },
+        {
+            "ip": "192.168.100.2",
+            "mac": "98:da:c4:68:d8:5c",
+            "vendor": "TP-LINK TECHNOLOGIES CO.,LTD.",
+            "fp_data": {
+                "hostname": "N/A",
+                "os": "Linux/Unix/macOS (TTL <= 64, actual: 64)",
+                "tcp_services": {
+                    "22": "SSH-2.0-dropbear_2012.55"
+                },
+                "tcp_window_sizes": {
+                    "22": 5840
+                },
+                "udp_ports": {}
+            }
+        },
+        {
+            "ip": "192.168.100.1",
+            "mac": "c0:f9:b0:00:68:ba",
+            "vendor": "HUAWEI TECHNOLOGIES CO.,LTD",
+            "fp_data": {
+                "hostname": "N/A",
+                "os": "Linux/Unix/macOS (TTL <= 64, actual: 64)",
+                "tcp_services": {},
+                "tcp_window_sizes": {},
+                "udp_ports": {
+                    "53": "Open (DNS Server)"
+                }
+            }
+        },
+        {
+            "ip": "192.168.100.15",
+            "mac": "6c:ba:b8:80:7c:fd",
+            "vendor": "Sagemcom Broadband SAS",
+            "fp_data": {
+                "hostname": "N/A",
+                "os": "No Response (ICMP Filtered)",
+                "tcp_services": {},
+                "tcp_window_sizes": {},
+                "udp_ports": {}
+            }
+        },
+        {
+            "ip": "192.168.100.28",
+            "mac": "00:84:ed:cd:90:9c",
+            "vendor": "LEXMARK INTERNATIONAL, INC.",
+            "fp_data": {
+                "hostname": "N/A",
+                "os": "Linux/Unix/macOS (TTL <= 64, actual: 64)",
+                "tcp_services": {
+                    "21": "220 KONICA MINOLTA FTP server ready."
+                },
+                "tcp_window_sizes": {
+                    "21": 14600
+                },
+                "udp_ports": {
+                    "161": "Open/Filtered (SNMP - No Reply)"
+                }
+            }
+        },
+        {
+            "ip": "192.168.100.12",
+            "mac": "76:1b:16:8e:d6:77",
+            "vendor": "Unknown Vendor",
+            "fp_data": {
+                "hostname": "N/A",
+                "os": "Linux/Unix/macOS (TTL <= 64, actual: 64)",
+                "tcp_services": {},
+                "tcp_window_sizes": {},
+                "udp_ports": {}
+            }
+        },
+        {
+            "ip": "192.168.100.24",
+            "mac": "9a:5d:30:e2:a9:f6",
+            "vendor": "Unknown Vendor",
+            "fp_data": {
+                "hostname": "N/A",
+                "os": "No Response (ICMP Filtered)",
+                "tcp_services": {},
+                "tcp_window_sizes": {},
+                "udp_ports": {}
+            }
+        }
+    ],
+    "vulnerability_matches": [
+        {
+            "ip": "192.168.100.3",
+            "cve_id": "CVE-2025-22869",
+            "description": "SSH servers which implement file transfer protocols are vulnerable to a denial of service attack from clients which complete the key exchange slowly, or not at all, causing pending content to be read into memory, but never transmitted.",
+            "matched_keyword": "ssh",
+            "banner": "SSH-2.0-dropbear_2012.55"
+        },
+        {
+            "ip": "192.168.100.2",
+            "cve_id": "CVE-2025-22869",
+            "description": "SSH servers which implement file transfer protocols are vulnerable to a denial of service attack from clients which complete the key exchange slowly, or not at all, causing pending content to be read into memory, but never transmitted.",
+            "matched_keyword": "ssh",
+            "banner": "SSH-2.0-dropbear_2012.55"
+        },
+        {
+            "ip": "192.168.100.28",
+            "cve_id": "CVE-2025-4158",
+            "description": "A vulnerability was found in PCMan FTP Server up to 2.0.7. It has been classified as critical. Affected is an unknown function of the component PROMPT Command Handler. The manipulation leads to buffer overflow. It is possible to launch the attack remotely",
+            "matched_keyword": "ftp server",
+            "banner": "220 KONICA MINOLTA FTP server ready."
+        }
+    ],
+    "weak_credentials": [
+        {
+            "ip": "192.168.100.3",
+            "service": "SSH",
+            "username": "admin",
+            "password": "admin",
+            "status": "Login Successful",
+            "port": 22
+        },
+        {
+            "ip": "192.168.100.2",
+            "service": "SSH",
+            "username": "admin",
+            "password": "admin",
+            "status": "Login Successful",
+            "port": 22
+        }
+    ],
+    "exposed_files": []
+}
